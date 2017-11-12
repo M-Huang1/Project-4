@@ -1,0 +1,82 @@
+#! /usr/bin/env python
+import sys
+import socket
+from HTMLParser import HTMLParser
+
+USERNAME = ""
+PASSWORD = ""
+SessionID = ""
+CSRFToken = ""
+LoginURL = "/accounts/login/"
+def sendRequest(request):
+  sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+  sock.connect(("fring.ccs.neu.edu", 80))
+  sock.send(request)
+  sock.settimeout(5)
+  return sock.recv(10000000)
+
+def getRequest(url):
+
+  request = "GET " + url + " HTTP/1.0\nHost: fring.ccs.neu.edu\n\n"
+  while 1:
+    result = sendRequest(request)
+    if len(result) > 0:
+      parser = HTMLParse()
+      parser.feed(result)
+      break
+
+
+def login():
+  global USERNAME
+  global PASSWORD
+  global CSRFToken
+  request = "POST /accounts/login/ HTTP/1.0\n"\
+            "Host: fring.ccs.neu.edu\n"\
+            "Content-Type: application/x-www-form-urlencoded\n"\
+            "Cookie: csrftoken=%s; sessionid=%s\n"\
+            "username=%s&password=%s&csrfmiddlewaretoken=%s&next=/fakebook/\n\n"%(CSRFToken,SessionID,USERNAME,PASSWORD,CSRFToken) 
+  while 1:
+    print request
+    result = sendRequest(request)
+    if len(result) > 0:
+      parser = HTMLParse()
+      parser.feed(result)
+      break  
+
+
+class HTMLParse(HTMLParser):
+  def __init__(self):
+    HTMLParser.__init__(self)
+    self.isHeader = True
+
+  def handle_data(self, data):
+    global SessionID
+    global CSRFToken
+
+    if data.isspace():
+      return
+
+    if self.isHeader:
+      print data
+      dataSets = data.split(" ")
+      for sets in dataSets:
+        if "csrf" in sets:
+          token = sets.split("=")[1]
+          CSRFToken = token[:len(token) - 1]
+
+        elif "sessionid" in sets:
+          ID = sets.split("=")[1]
+          SessionID = ID[:len(ID) - 1]
+          
+      self.isHeader = False
+
+    else:
+      print(data)
+if __name__ == '__main__':
+  if len(sys.argv) < 3:
+    print("Please Include Your ID and the Password as arguments")
+  else:
+    USERNAME = sys.argv[1]
+    PASSWORD = sys.argv[2]
+  getRequest(LoginURL)
+  login()
