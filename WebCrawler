@@ -8,70 +8,108 @@ PASSWORD = ""
 SessionID = ""
 CSRFToken = ""
 LoginURL = "/accounts/login/"
+LoggedIn = False
+LinksAdded = []
+LinksToCheck = []
+FlagsFound = 0
+#Sends the API request to the socket
 def sendRequest(request):
   sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   sock.connect(("fring.ccs.neu.edu", 80))
   sock.send(request)
   sock.settimeout(5)
-  return sock.recv(10000000)
-
+  result = sock.recv(10000000)
+  return result
+#Formulates the Get Request and sends it to the HTMl Parser
 def getRequest(url):
+  global CSRFToken
+  global SessionID
+  if CSRFToken == "" and SessionID == "":
+    request = "GET " + url + " HTTP/1.1\r\n"\
+              "Host: fring.ccs.neu.edu\r\n"\
+              "Connection: keep-alive\r\n\r\n"
+              
+  else:
+    request = "GET " + url + "  HTTP/1.1\r\n"\
+              "Host: fring.ccs.neu.edu\r\n"\
+              "Content-Type: application/x-www-form-urlencoded\r\n"\
+              "Connection: keep-alive\r\n"\
+              "Cookie: csrftoken=%s; sessionid=%s\r\n\r\n"%(CSRFToken, SessionID)        
+  
+  result = sendRequest(request)
+  parser = HTMLParse()
+  parser.feed(result)
 
-  request = "GET " + url + " HTTP/1.0\nHost: fring.ccs.neu.edu\n\n"
-  while 1:
-    result = sendRequest(request)
-    if len(result) > 0:
-      parser = HTMLParse()
-      parser.feed(result)
-      break
-
-
+#Logins in to the server with the given credentials
 def login():
   global USERNAME
   global PASSWORD
   global CSRFToken
-  request = "POST /accounts/login/ HTTP/1.0\n"\
-            "Host: fring.ccs.neu.edu\n"\
-            "Content-Type: application/x-www-form-urlencoded\n"\
-            "Cookie: csrftoken=%s; sessionid=%s\n"\
-            "username=%s&password=%s&csrfmiddlewaretoken=%s&next=/fakebook/\n\n"%(CSRFToken,SessionID,USERNAME,PASSWORD,CSRFToken) 
-  while 1:
-    print request
-    result = sendRequest(request)
-    if len(result) > 0:
-      parser = HTMLParse()
-      parser.feed(result)
-      break  
+  global SessionID
+  global LoggedIn
+  global LinksChecked
+  loginData = "username=%s&password=%s&csrfmiddlewaretoken=%s&next=/fakebook/\r\n\r\n"%(USERNAME,PASSWORD,CSRFToken) 
+  request = "POST /accounts/login/ HTTP/1.1\r\n"\
+            "Host: fring.ccs.neu.edu\r\n"\
+            "Content-Length: " + str(len(loginData)) + "\r\n"+\
+            "Content-Type: application/x-www-form-urlencoded\r\n"\
+            "Connection: keep-alive\r\n"\
+            "Cookie: csrftoken=%s; sessionid=%s;\r\n\r\n"%(CSRFToken, SessionID)        
+  result = sendRequest(request + loginData) 
+  parser = HTMLParse()
+  parser.feed(result)
+  if "302" in result and SessionID in result:
+    LoggedIn = True
+    LinksAdded.append("/fakebook/")
+    getRequest("/fakebook/")
+    
 
-
+#HTMlParser class 
 class HTMLParse(HTMLParser):
   def __init__(self):
     HTMLParser.__init__(self)
     self.isHeader = True
-
+    
+  #Handles all the data, including maintaining cookies and finding flags
   def handle_data(self, data):
     global SessionID
     global CSRFToken
-
+    global LoggedIn
+    global LinksChecked 
+    global FlagsFound
     if data.isspace():
       return
 
     if self.isHeader:
-      print data
-      dataSets = data.split(" ")
-      for sets in dataSets:
-        if "csrf" in sets:
-          token = sets.split("=")[1]
-          CSRFToken = token[:len(token) - 1]
+      if not LoggedIn:
+        dataSets = data.split(" ")
+        for sets in dataSets: 
+          if "csrf" in sets:
+            token = sets.split("=")[1]
+            CSRFToken = token[:len(token) - 1]
 
-        elif "sessionid" in sets:
-          ID = sets.split("=")[1]
-          SessionID = ID[:len(ID) - 1]
-          
+          elif "sessionid" in sets:
+            ID = sets.split("=")[1]
+            SessionID = ID[:len(ID) - 1]   
       self.isHeader = False
+    elif "FLAG:" in data:
+      print data
+      FlagsFound += 1
+      if FlagsFound == 5:
+        sys.exit(0)
+  #Handles tags, mostly used to visit links
+  def handle_starttag(self, tag, attrs):
+      if tag == "a":
+        if attrs[0][1] not in LinksAdded and "/fakebook/" in attrs[0][1]:
+          LinksAdded.append(attrs[0][1])
+          LinksToCheck.append(attrs[0][1])
+          
+      elif tag == "h2":
+        if len(attrs) > 0:
+          if str(attrs[0][1]) == 'secret_flag':
+            print "FOUND FLAG"
 
-    else:
-      print(data)
+#Main Function
 if __name__ == '__main__':
   if len(sys.argv) < 3:
     print("Please Include Your ID and the Password as arguments")
@@ -80,3 +118,7 @@ if __name__ == '__main__':
     PASSWORD = sys.argv[2]
   getRequest(LoginURL)
   login()
+  #Iterates over all unvisited links
+  while len(LinksToCheck) > 0:
+    getRequest(LinksToCheck[0])
+    LinksToCheck.pop(0)
