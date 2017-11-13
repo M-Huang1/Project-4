@@ -104,10 +104,6 @@ class HTMLParse(HTMLParser):
           LinksAdded.append(attrs[0][1])
           LinksToCheck.append(attrs[0][1])
           
-      elif tag == "h2":
-        if len(attrs) > 0:
-          if str(attrs[0][1]) == 'secret_flag':
-            print "FOUND FLAG"
 
 #Main Function
 if __name__ == '__main__':
