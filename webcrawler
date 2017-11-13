@@ -93,7 +93,7 @@ class HTMLParse(HTMLParser):
             SessionID = ID[:len(ID) - 1]   
       self.isHeader = False
     elif "FLAG:" in data:
-      print data
+      print data[6:]
       FlagsFound += 1
       if FlagsFound == 5:
         sys.exit(0)
